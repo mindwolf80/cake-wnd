@@ -83,6 +83,8 @@ END {
 	for (c = 0; c <= 1; c++) if (n[c])
 		printf "clamp=%d  runs=%d  mean ifb_drops=%.0f  down=%.1f Mbps  down_lat=%.1f ms  client_retrans=%.0f\n",
 			c, n[c], drops[c]/n[c], down[c]/n[c], dl[c]/n[c], rt[c]/n[c]
+	if (n[0] && drops[0]/n[0] < 10)
+		print "WARNING: clamp-off runs barely dropped - CAKE is not the bottleneck, results are meaningless (lower LONG_SHAPE)"
 	if (fl[1]) printf "clamp=1 totals: flagged=%d clamped=%d skip_noct=%d (%.0f%% of flagged) skip_collide=%d (%.0f%%)\n",
 		fl[1], cl[1], noct[1], 100*noct[1]/fl[1], col[1], 100*col[1]/fl[1]
 	else print "clamp=1: nothing flagged - the clamp never engaged"
