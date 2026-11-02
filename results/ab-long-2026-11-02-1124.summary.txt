@@ -1,1 +1,5 @@
+clamp=0  runs=6  mean ifb_drops=380  down=130.0 Mbps  down_lat=28.5 ms  client_retrans=11
+clamp=1  runs=6  mean ifb_drops=7  down=88.8 Mbps  down_lat=27.6 ms  client_retrans=2
+WARNING: clamp-off runs barely dropped - CAKE is not the bottleneck, results are meaningless (lower LONG_SHAPE)
+clamp=1 totals: flagged=163219 clamped=677158 skip_noct=0 (0% of flagged) skip_collide=0 (0%)
 shaper: 200Mbit (single stream peaked ~126-147 Mbit, so CAKE was not the bottleneck; superseded by the 100Mbit run)
