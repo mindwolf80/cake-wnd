@@ -28,7 +28,8 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
 
 ## How it works
 
-- Ingress-mode CAKE, on dequeue: a TCP packet whose sojourn exceeds `wnd_sojourn_us` flags
+- Ingress-mode CAKE, on dequeue: a TCP packet whose flow's CoDel is in dropping state
+  (sojourn above CAKE's target for a full interval, i.e. a standing queue) flags
   its flow in a shared 1024-slot table keyed by the data-direction 5-tuple. On the WAN
   side both qdiscs see the same post-NAT addresses, so no NAT translation is needed.
 - Egress-mode CAKE, on enqueue: an ACK whose flow is flagged gets its window lowered
@@ -50,10 +51,9 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
 | Name | Default | |
 |---|---|---|
 | `wnd_clamp` | `N` | master switch |
-| `wnd_sojourn_us` | `5000` | ingress sojourn that flags a flow |
 | `wnd_min_bytes` | `5792` | clamp floor (4 × 1448 MSS) |
 | `wnd_hold_ms` | `200` | flag lifetime after the last slow packet |
-| `wnd_flagged` | ro | ingress packets over the threshold |
+| `wnd_flagged` | ro | ingress packets dequeued while their flow was in CoDel dropping state |
 | `wnd_cuts` | ro | clamp reductions |
 | `wnd_raises` | ro | clamp release steps |
 | `wnd_clamped` | ro | ACKs rewritten |
@@ -63,7 +63,7 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
 
 Writable values set through sysfs last until reboot. Values that persist live in
 `/etc/modules.d/sched-cake` (shipped by this package as a conffile, kept on reinstall),
-e.g. `sch_cake wnd_clamp=1 wnd_sojourn_us=5000 wnd_min_bytes=5792 wnd_hold_ms=200`.
+e.g. `sch_cake wnd_clamp=1 wnd_min_bytes=5792 wnd_hold_ms=200`.
 
 ## Build
 

@@ -28,7 +28,7 @@ endef
 
 define KernelPackage/sched-cake-wnd/install
 	$(INSTALL_DIR) $(1)/etc/modules.d
-	echo "sch_cake wnd_clamp=0 wnd_sojourn_us=5000 wnd_min_bytes=5792 wnd_hold_ms=200" \
+	echo "sch_cake wnd_clamp=0 wnd_min_bytes=5792 wnd_hold_ms=200" \
 		> $(1)/etc/modules.d/sched-cake
 endef
 

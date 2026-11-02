@@ -630,7 +630,8 @@ static bool cake_update_flowkeys(struct flow_keys *keys,
 
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 /* Receive-window clamping (cake-wnd). An ingress-mode CAKE instance flags
- * TCP flows whose packets sit longer than wnd_sojourn_us; any egress-mode
+ * TCP flows whose CoDel is in dropping state (sojourn above target for a
+ * full interval: a standing queue, not a burst); any egress-mode
  * instance then lowers the window advertised in those flows' ACKs. While a
  * flow stays flagged its clamp is cut by 1/4 once per CAKE interval, down to
  * wnd_min_bytes. When the flag expires (wnd_hold_ms) the clamp is raised by
@@ -640,9 +641,6 @@ static bool cake_update_flowkeys(struct flow_keys *keys,
 static bool wnd_clamp;
 module_param(wnd_clamp, bool, 0644);
 MODULE_PARM_DESC(wnd_clamp, "Clamp TCP receive window of flows queueing on ingress (0 = stock CAKE)");
-static uint wnd_sojourn_us = 5000;
-module_param(wnd_sojourn_us, uint, 0644);
-MODULE_PARM_DESC(wnd_sojourn_us, "Ingress sojourn time that flags a flow (us)");
 static uint wnd_min_bytes = 5792;
 module_param(wnd_min_bytes, uint, 0644);
 MODULE_PARM_DESC(wnd_min_bytes, "Never clamp the window below this (bytes)");
@@ -758,9 +756,8 @@ static void cake_wnd_keep_alive(unsigned long until)
 		WRITE_ONCE(cake_wnd_any_until, until);
 }
 
-/* Ingress dequeue: flag the flow if this packet waited too long. */
-static void cake_wnd_flag(const struct sk_buff *skb, u64 sojourn,
-			  u64 interval)
+/* Ingress dequeue: flag the flow of a packet CoDel is dropping for. */
+static void cake_wnd_flag(const struct sk_buff *skb, u64 interval)
 {
 	unsigned long now = jiffies;
 	struct cake_wnd_entry *e;
@@ -768,8 +765,7 @@ static void cake_wnd_flag(const struct sk_buff *skb, u64 sojourn,
 	struct tcphdr _th;
 	int thoff;
 
-	if (sojourn <= (u64)READ_ONCE(wnd_sojourn_us) * NSEC_PER_USEC ||
-	    !cake_wnd_parse(skb, &k, &_th, &thoff, false))
+	if (!cake_wnd_parse(skb, &k, &_th, &thoff, false))
 		return;
 
 	e = cake_wnd_slot(&k);
@@ -2543,8 +2539,8 @@ retry:
 
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 	if (READ_ONCE(wnd_clamp) &&
-	    q->config->rate_flags & CAKE_FLAG_INGRESS)
-		cake_wnd_flag(skb, delay, b->cparams.interval);
+	    q->config->rate_flags & CAKE_FLAG_INGRESS && flow->cvars.dropping)
+		cake_wnd_flag(skb, b->cparams.interval);
 #endif
 
 	len = cake_advance_shaper(q, b, skb, now, false);
