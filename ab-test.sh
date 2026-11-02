@@ -4,22 +4,35 @@
 # Pairs run ABBA (off,on / on,off / ...) so drift hits both conditions evenly.
 #   ookla: Ookla CLI, multi-stream, ~10-15 s per direction; first run's server is reused.
 #   long:  one 60 s single-stream download, ping to 1.1.1.1 alongside for loaded latency.
+#          The ingress shaper is lowered to $LONG_SHAPE so the stream queues in CAKE.
 set -euo pipefail
 R=root@192.168.1.1
 PAIRS=${1:-6}
 LOAD=${2:-ookla}
 SID=${3:-}
 LONG_URL=https://ash-speed.hetzner.com/10GB.bin
+LONG_SHAPE=${LONG_SHAPE:-200Mbit}
+IFB=ifb4eth1
 OUT=ab-$LOAD-$(date +%F-%H%M).csv
 P=/sys/module/sch_cake/parameters
 
 ssh -o BatchMode=yes $R "[ -w $P/wnd_clamp ]" || { echo "cake-wnd module not loaded"; exit 1; }
-trap 'ssh -o BatchMode=yes $R "echo 0 > $P/wnd_clamp" && echo "wnd_clamp reset to 0"' EXIT
+SHAPE0=$(ssh -o BatchMode=yes $R "tc qdisc show dev $IFB" | sed -n 's/.* bandwidth \([0-9]*[KMG]*bit\).*/\1/p')
+[ -n "$SHAPE0" ] || { echo "no cake bandwidth on $IFB"; exit 1; }
+restore() {
+	ssh -o BatchMode=yes $R "echo 0 > $P/wnd_clamp; tc qdisc change dev $IFB root cake bandwidth $SHAPE0" &&
+		echo "wnd_clamp reset to 0, $IFB bandwidth restored to $SHAPE0"
+}
+trap restore EXIT
+if [ "$LOAD" = long ]; then
+	ssh -o BatchMode=yes $R "tc qdisc change dev $IFB root cake bandwidth $LONG_SHAPE"
+	echo "$IFB bandwidth $SHAPE0 -> $LONG_SHAPE for this test"
+fi
 
 # ifb_drops eth1_drops flagged cuts raises clamped skip_noct skip_collide
 router_snap() {
 	ssh -o BatchMode=yes $R "
-		for d in ifb4eth1 eth1; do tc -s qdisc show dev \$d | sed -n 's/.*(dropped \([0-9]*\),.*/\1/p' | head -1; done
+		for d in $IFB eth1; do tc -s qdisc show dev \$d | sed -n 's/.*(dropped \([0-9]*\),.*/\1/p' | head -1; done
 		cat $P/wnd_flagged $P/wnd_cuts $P/wnd_raises $P/wnd_clamped $P/wnd_skip_noct $P/wnd_skip_collide" | tr '\n' ' '
 }
 retrans() { nstat -asz TcpRetransSegs | awk '/TcpRetransSegs/{print $2}'; }
