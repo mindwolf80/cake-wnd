@@ -115,6 +115,10 @@ insmod sch_cake
 
 ## Upgrades
 
+Stock `kmod-sched-cake` also owns `/etc/modules.d/sched-cake`: any upgrade or reinstall of it
+silently replaces the parameter line (and `sch_cake.ko`). After any package update, check
+`cat /etc/modules.d/sched-cake` and `modinfo sch_cake | grep parm` first.
+
 A sysupgrade puts stock CAKE back, and any new release (25.12.7, ...) changes the kernel
 hash, so this package won't install. For every release: update the Target lines, the
 SDK URL/hash in the workflow, re-take `sch_cake.c` with that release's patches, re-run CI.
