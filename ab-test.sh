@@ -106,10 +106,10 @@ END {
 	for (c = 0; c <= 1; c++) if (n[c])
 		printf "clamp=%d  runs=%d  mean ifb_drops=%.0f  down=%.1f Mbps  down_lat=%.1f ms  client_retrans=%.0f\n",
 			c, n[c], drops[c]/n[c], down[c]/n[c], dl[c]/n[c], rt[c]/n[c]
-	# median, so one run disturbed by other traffic cannot hide a non-bottlenecked test
-	if (n[0]) { asort(d0); m = int((n[0] + 1) / 2); med0 = (n[0] % 2) ? d0[m] : (d0[m] + d0[m + 1]) / 2 }
-	if (n[0] && med0 < 50)
-		print "WARNING: clamp-off runs barely dropped - CAKE is not the bottleneck, results are meaningless (lower LONG_SHAPE)"
+	# every clamp-off run must build a standing queue in CAKE, or that run says nothing
+	low = 0; for (i = 1; i <= n[0]; i++) low += d0[i] < 100
+	if (low)
+		printf "WARNING: %d of %d clamp-off runs had <100 IFB drops - CAKE was not the bottleneck in those runs\n", low, n[0]
 	if (fl[1]) printf "clamp=1 totals: flagged=%d clamped=%d skip_noct=%d (%.0f%% of flagged) skip_collide=%d (%.0f%%)\n",
 		fl[1], cl[1], noct[1], 100*noct[1]/fl[1], col[1], 100*col[1]/fl[1]
 	else print "clamp=1: nothing flagged - the clamp never engaged"
