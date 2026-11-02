@@ -1,0 +1,6 @@
+clamp=0  runs=6  mean ifb_drops=783  down=66.3 Mbps  down_lat=27.8 ms  client_retrans=1
+clamp=1  runs=6  mean ifb_drops=2  down=36.1 Mbps  down_lat=26.6 ms  client_retrans=10
+WARNING: clamp-off runs barely dropped - CAKE is not the bottleneck, results are meaningless (lower LONG_SHAPE)
+clamp=1 totals: flagged=47850 clamped=397316 skip_noct=0 (0% of flagged) skip_collide=0 (0%)
+clamp=0 excluding 11:45:32 and 11:46:35 (cross traffic: 1214 and 3432 drops, the latter at 25.2 Mbps)  runs=4  mean ifb_drops=13  down=75.7 Mbps  down_lat=28.2 ms  client_retrans=0
+shaper: 100Mbit. Clamp-off single stream reached only 70-81 Mbps with ~10-17 drops/run, so CAKE was still not the bottleneck. Module: per-packet 5 ms trigger (pre-a2a4569). Client was on Wi-Fi (wlp2s0).
