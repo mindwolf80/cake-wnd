@@ -1,0 +1,7 @@
+clamp=0  runs=8  mean ifb_drops=16051  down=52.6 Mbps  down_lat=25.5 ms  client_retrans=0
+clamp=1  runs=8  mean ifb_drops=2076  down=53.2 Mbps  down_lat=25.5 ms  client_retrans=10
+clamp=1 totals: flagged=16608 clamped=1124074 skip_noct=0 (0% of flagged) skip_collide=0 (0%)
+ifb_drops per run: clamp=0: 16477 18013 16053 14282 15200 15628 16385 16371  clamp=1: 2110 1973 2074 2026 2083 2364 2016 1965
+down Mbps per run: clamp=0: 52.8 52.0 52.8 53.0 53.1 52.4 52.1 52.4  clamp=1: 52.0 53.6 53.8 54.2 53.2 50.5 54.1 54.0
+IFB drops: -87% with clamp on (16051 -> 2076 mean); ranges do not overlap (off 14282-18013, on 1965-2364). Throughput and loaded latency unchanged.
+shaper: 60Mbit, real downloads at once (Ubuntu ISO/Canonical, Debian DVD/umu.se mirror, NVIDIA/Akamai, Android image/dl.google.com), 8 ABBA pairs, wired client, Wi-Fi off. Module: a2a4569 (flag on actual COBALT drop/mark).
