@@ -82,14 +82,19 @@ scp -O kmod-sched-cake-wnd-6.12.112-r1.apk root@192.168.1.1:/tmp/
 ssh root@192.168.1.1
 /etc/init.d/sqm stop
 rmmod sch_cake
-apk add --allow-untrusted --force-overwrite /tmp/kmod-sched-cake-wnd-6.12.112-r1.apk
-insmod sch_cake $(cut -d' ' -f2- /etc/modules.d/sched-cake)
+apk add --allow-untrusted --force-overwrite /tmp/kmod-sched-cake-wnd-6.12.112-r1.apk  # post-install loads it via /etc/modules.d
+lsmod | grep -q sch_cake || insmod sch_cake $(cut -d' ' -f2- /etc/modules.d/sched-cake)
 /etc/init.d/sqm start
 modinfo sch_cake | grep -E 'filename|vermagic|parm'
 tc -s qdisc | grep -A2 cake
 ```
 
 ## Test
+
+Keep `wnd_clamp=0` in `/etc/modules.d/sched-cake` and turn the clamp on only through sysfs
+until it has survived real load. If the clamp code crashes the kernel, the reboot then comes
+back with the clamp off. (Removing the autoload line wouldn't help: SQM's `tc qdisc add ... cake`
+makes the kernel load `sch_cake` on its own.)
 
 1. Toggle off: run the same bufferbloat tests as the existing baseline; results must match stock.
 2. Toggle on: `echo 1 > /sys/module/sch_cake/parameters/wnd_clamp`, repeat the tests and compare
