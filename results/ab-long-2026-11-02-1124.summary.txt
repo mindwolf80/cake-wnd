@@ -1,0 +1,1 @@
+shaper: 200Mbit (single stream peaked ~126-147 Mbit, so CAKE was not the bottleneck; superseded by the 100Mbit run)
