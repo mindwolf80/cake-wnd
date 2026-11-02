@@ -1,0 +1,5 @@
+clamp=0  runs=6  mean ifb_drops=614  down=78.1 Mbps  down_lat=25.8 ms  client_retrans=0
+clamp=1  runs=6  mean ifb_drops=310  down=78.3 Mbps  down_lat=25.8 ms  client_retrans=0
+clamp=1 totals: flagged=644 clamped=86929 skip_noct=0 (0% of flagged) skip_collide=0 (0%)
+ifb_drops per run: clamp=0: 24 1745 32 704 1152 29  clamp=1: 782 156 813 25 49 36
+shaper: 100Mbit, 4 parallel streams, wired client (enx-usb-nic), Wi-Fi off. Module: a2a4569 (flag on actual COBALT drop/mark).

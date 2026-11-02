@@ -107,7 +107,7 @@ END {
 		printf "clamp=%d  runs=%d  mean ifb_drops=%.0f  down=%.1f Mbps  down_lat=%.1f ms  client_retrans=%.0f\n",
 			c, n[c], drops[c]/n[c], down[c]/n[c], dl[c]/n[c], rt[c]/n[c]
 	# median, so one run disturbed by other traffic cannot hide a non-bottlenecked test
-	if (n[0]) { asort(d0); med0 = d0[int((n[0] + 1) / 2)] }
+	if (n[0]) { asort(d0); m = int((n[0] + 1) / 2); med0 = (n[0] % 2) ? d0[m] : (d0[m] + d0[m + 1]) / 2 }
 	if (n[0] && med0 < 50)
 		print "WARNING: clamp-off runs barely dropped - CAKE is not the bottleneck, results are meaningless (lower LONG_SHAPE)"
 	if (fl[1]) printf "clamp=1 totals: flagged=%d clamped=%d skip_noct=%d (%.0f%% of flagged) skip_collide=%d (%.0f%%)\n",
