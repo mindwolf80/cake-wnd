@@ -28,9 +28,8 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
 
 ## How it works
 
-- Ingress-mode CAKE, on dequeue: a TCP packet whose flow's CoDel is in dropping state
-  (sojourn above CAKE's target for a full interval, i.e. a standing queue) flags
-  its flow in a shared 1024-slot table keyed by the data-direction 5-tuple. On the WAN
+- Ingress-mode CAKE, on dequeue: when COBALT drops (or CE-marks) a TCP packet, it flags
+  that flow in a shared 1024-slot table keyed by the data-direction 5-tuple. On the WAN
   side both qdiscs see the same post-NAT addresses, so no NAT translation is needed.
 - Egress-mode CAKE, on enqueue: an ACK whose flow is flagged gets its window lowered
   (never raised), checksum fixed incrementally. The clamp starts at 3/4 of the window the
@@ -38,6 +37,9 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
   flow keeps flagging, down to `wnd_min_bytes`. When no slow packet has been seen for
   `wnd_hold_ms`, the flag expires and the clamp is raised by 1/4 per interval until it
   reaches the advertised window, so the sender does not burst back to full speed.
+- So the clamp never prevents the first drop. It turns that drop into a window cut, so
+  CAKE needs fewer drops afterwards. (A sojourn-based trigger fired on transient bursts and
+  cost ~37% throughput with no standing queue; see `results/`.)
 - Each table slot holds the full flow tuple. A flow whose slot is held by another live flow
   is not clamped (`wnd_skip_collide`); one flow's clamp is never applied to another.
 - Window scale comes from conntrack (`seen[dir].td_scale`), used only when conntrack saw the
@@ -53,7 +55,7 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
 | `wnd_clamp` | `N` | master switch |
 | `wnd_min_bytes` | `5792` | clamp floor (4 × 1448 MSS) |
 | `wnd_hold_ms` | `200` | flag lifetime after the last slow packet |
-| `wnd_flagged` | ro | ingress packets dequeued while their flow was in CoDel dropping state |
+| `wnd_flagged` | ro | ingress COBALT drops/marks of TCP packets (flag events) |
 | `wnd_cuts` | ro | clamp reductions |
 | `wnd_raises` | ro | clamp release steps |
 | `wnd_clamped` | ro | ACKs rewritten |

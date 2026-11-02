@@ -630,8 +630,8 @@ static bool cake_update_flowkeys(struct flow_keys *keys,
 
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 /* Receive-window clamping (cake-wnd). An ingress-mode CAKE instance flags
- * TCP flows whose CoDel is in dropping state (sojourn above target for a
- * full interval: a standing queue, not a burst); any egress-mode
+ * TCP flows when COBALT drops (or CE-marks) one of their packets, i.e. a
+ * standing queue rather than a burst; any egress-mode
  * instance then lowers the window advertised in those flows' ACKs. While a
  * flow stays flagged its clamp is cut by 1/4 once per CAKE interval, down to
  * wnd_min_bytes. When the flag expires (wnd_hold_ms) the clamp is raised by
@@ -756,7 +756,10 @@ static void cake_wnd_keep_alive(unsigned long until)
 		WRITE_ONCE(cake_wnd_any_until, until);
 }
 
-/* Ingress dequeue: flag the flow of a packet CoDel is dropping for. */
+/* Ingress dequeue: flag the flow of a packet COBALT drops or marks.
+ * (cvars.dropping is set on the first over-target packet, so it is no
+ * standing-queue signal; the actual drop is.)
+ */
 static void cake_wnd_flag(const struct sk_buff *skb, u64 interval)
 {
 	unsigned long now = jiffies;
@@ -2518,6 +2521,11 @@ retry:
 		}
 		flow->dropped++;
 		b->tin_dropped++;
+#if IS_ENABLED(CONFIG_NF_CONNTRACK)
+		if (READ_ONCE(wnd_clamp) &&
+		    q->config->rate_flags & CAKE_FLAG_INGRESS)
+			cake_wnd_flag(skb, b->cparams.interval);
+#endif
 		qdisc_tree_reduce_backlog(sch, 1, qdisc_pkt_len(skb));
 		qdisc_qstats_drop(sch);
 		kfree_skb(skb);
@@ -2539,7 +2547,7 @@ retry:
 
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 	if (READ_ONCE(wnd_clamp) &&
-	    q->config->rate_flags & CAKE_FLAG_INGRESS && flow->cvars.dropping)
+	    q->config->rate_flags & CAKE_FLAG_INGRESS && flow->cvars.ecn_marked)
 		cake_wnd_flag(skb, b->cparams.interval);
 #endif
 
