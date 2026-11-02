@@ -5,7 +5,7 @@
 # Refuses to run over Wi-Fi: turns Wi-Fi off if needed (back on at exit) and checks
 # that the test routes leave on a wired interface.
 #   ookla: Ookla CLI, multi-stream, ~10-15 s per direction; first run's server is reused.
-#   long:  one 60 s single-stream download, ping to 1.1.1.1 alongside for loaded latency.
+#   long:  60 s download over $STREAMS parallel streams (default 1), ping to 1.1.1.1 alongside.
 #          The ingress shaper is lowered to $LONG_SHAPE so the stream queues in CAKE.
 set -euo pipefail
 R=root@192.168.1.1
@@ -15,6 +15,7 @@ SID=${3:-}
 LONG_HOST=ash-speed.hetzner.com
 LONG_URL=https://$LONG_HOST/10GB.bin
 LONG_SHAPE=${LONG_SHAPE:-200Mbit}
+STREAMS=${STREAMS:-1}
 IFB=ifb4eth1
 OUT=ab-$LOAD-$(date +%F-%H%M).csv
 P=/sys/module/sch_cake/parameters
@@ -66,15 +67,17 @@ print(j["server"]["id"], round(j["download"]["bandwidth"]*8/1e6,1), round(j["upl
 		"$(speedtest -f json ${SID:+-s $SID})"
 }
 run_long() {
-	local pf bps
-	pf=$(mktemp)
+	local pf tf s
+	pf=$(mktemp); tf=$(mktemp)
 	ping -n -i 0.2 -w 62 1.1.1.1 > "$pf" &
-	bps=$(curl -4 -s -o /dev/null --max-time 60 -w '%{speed_download}' "$LONG_URL" || true)
+	for ((s = 0; s < STREAMS; s++)); do
+		{ curl -4 -s -o /dev/null --max-time 60 -w '%{speed_download}\n' "$LONG_URL" || true; } >> "$tf" &
+	done
 	wait
 	# loaded latency = median of pings taken during the download
-	echo "hetzner-ash $(awk -v b="$bps" 'BEGIN{printf "%.1f", b*8/1e6}') - -" \
+	echo "hetzner-ash-x$STREAMS $(awk '{s += $1} END {printf "%.1f", s*8/1e6}' "$tf") - -" \
 		"$(sed -n 's/.*time=\([0-9.]*\).*/\1/p' "$pf" | sort -n | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')" -
-	rm -f "$pf"
+	rm -f "$pf" "$tf"
 }
 
 echo "time,iface,clamp,server,down_mbps,up_mbps,idle_ms,down_lat_ms,up_lat_ms,ifb_drops,eth1_drops,flagged,cuts,raises,clamped,skip_noct,skip_collide,client_retrans" > "$OUT"
