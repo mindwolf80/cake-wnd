@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  kmod:
+    runs-on: ubuntu-24.04
+    env:
+      SDK_URL: https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+      SDK_SHA256: 1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential gawk zstd file rsync unzip python3
+
+      - name: Cache SDK
+        uses: actions/cache@v4
+        with:
+          path: sdk.tar.zst
+          key: ${{ env.SDK_SHA256 }}
+
+      - name: Fetch SDK
+        run: |
+          [ -f sdk.tar.zst ] || curl -fsSL -o sdk.tar.zst "$SDK_URL"
+          echo "$SDK_SHA256  sdk.tar.zst" | sha256sum -c
+          mkdir sdk && tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
+
+      - name: Build kmod
+        run: |
+          cp -r package/cake-wnd sdk/package/
+          cd sdk
+          make defconfig
+          make package/cake-wnd/compile V=s -j"$(nproc)"
+
+      - name: Check vermagic against README
+        run: ./check-vermagic.sh sdk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kmod-sched-cake-wnd
+          path: sdk/bin/targets/mediatek/filogic/packages/kmod-sched-cake-wnd-*.apk
+          if-no-files-found: error
