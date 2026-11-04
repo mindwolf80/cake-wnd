@@ -48,6 +48,24 @@ everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_de
 - Untouched: non-TCP (QUIC), IPv6 with extension headers, PPPoE, GSO ACKs, SYN/RST, flows
   conntrack picked up mid-stream.
 
+## When it helps
+
+What the clamp measurably changes: when long TCP downloads fill the ingress shaper, CAKE drops
+far fewer packets (-87% at 60Mbit, `results/ab-real-*`) at the same throughput and latency.
+So it matters where long TCP downloads regularly saturate the link:
+
+- Game downloads and updates (Steam, Xbox, PlayStation, Battle.net): hour-long TCP downloads.
+- OS updates (Windows Update, macOS) on several devices at once.
+- TCP video streaming (Netflix, Disney+, Prime) while someone else downloads.
+- Modest links (50-100Mbit cable/DSL) shared by a household: the shaper is often full, so
+  there is more to save than on a fast, rarely-saturated link.
+- Cloud backup restores and large sync downloads (OneDrive, Google Drive, iCloud, Backblaze).
+- Shared houses / student flats: many concurrent downloads, link always at its limit.
+
+No effect on: QUIC (YouTube, most Google services), UDP games and voice/video calls, web
+browsing (flows end before CAKE drops), uploads, or links that rarely saturate. Only tested on
+the target below; other link types (DSL, PPPoE, IPv6-heavy) are untested.
+
 ## Parameters (`/sys/module/sch_cake/parameters/`)
 
 | Name | Default | |
