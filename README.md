@@ -26,6 +26,18 @@ in the workflow, and re-take `sch_cake.c` (below).
 and `701-0{1,2}-*` (the cake_mq backports), i.e. the stock module. The window-clamp code is
 everything under `cake_wnd_*` / `wnd_*` plus two hooks (`cake_enqueue`, `cake_dequeue`).
 
+On top of that base (`bbbe44a`), the following upstream `sch_cake` fixes not yet in the
+backport set above are carried by hand and should be re-applied (or re-checked against the
+new upstream state) on the next re-take: net-next `d23a16d907dc` ("net/sched/sch_cake:
+serialize reconfiguration with the datapath", commits config and reconfigures under
+`sch_tree_lock`, `READ_ONCE`/`WRITE_ONCE` on `rate_bps`); net-next `d7010be1ba23` ("reduce
+parent backlog when clearing a tin") plus its prerequisite `a3729e0df005` ("skip clearing
+unused tins during rate adjustment"); net-next `7cbfb180945c` ("fix autorate reconfiguration
+throttling", sets `last_reconfig_time`); and Yuchao Zhang's `[PATCH net v4 1/2 + 2/2]` (cake
+list, 2026-09-28) making `cake_overhead()` fall back to plain overhead when the transport
+header is unset, the offset is negative, or `segs <= 1`, instead of charging the shaper
+~4 GB / ~66 KB per segment.
+
 ## How it works
 
 - Ingress-mode CAKE, on dequeue: when COBALT drops (or CE-marks) a TCP packet, it flags

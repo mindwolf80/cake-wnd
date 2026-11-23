@@ -1689,18 +1689,23 @@ static u32 cake_calc_overhead(struct cake_sched_data *qd, u32 len, u32 off)
 static u32 cake_overhead(struct cake_sched_data *q, const struct sk_buff *skb)
 {
 	const struct skb_shared_info *shinfo = skb_shinfo(skb);
-	unsigned int hdr_len, last_len = 0;
+	unsigned int last_len = 0;
 	u32 off = skb_network_offset(skb);
 	u32 len = qdisc_pkt_len(skb);
 	u16 segs = 1;
+	int hdr_len;
 
 	q->avg_netoff = cake_ewma(q->avg_netoff, off << 16, 8);
 
 	if (!shinfo->gso_size)
-		return cake_calc_overhead(q, len, off);
+		goto err;
 
 	/* borrowed from qdisc_pkt_len_init() */
+	if (unlikely(!skb_transport_header_was_set(skb)))
+		goto err;
 	hdr_len = skb_transport_offset(skb);
+	if (unlikely(hdr_len < 0))
+		goto err;
 
 	/* + transport layer */
 	if (likely(shinfo->gso_type & (SKB_GSO_TCPV4 |
@@ -1726,11 +1731,17 @@ static u32 cake_overhead(struct cake_sched_data *q, const struct sk_buff *skb)
 	else
 		segs = shinfo->gso_segs;
 
+	if (segs <= 1)
+		goto err;
+
 	len = shinfo->gso_size + hdr_len;
 	last_len = skb->len - shinfo->gso_size * (segs - 1);
 
 	return (cake_calc_overhead(q, len, off) * (segs - 1) +
 		cake_calc_overhead(q, last_len, off));
+
+err:
+	return cake_calc_overhead(q, len, off);
 }
 
 static void cake_heap_swap(struct cake_sched_data *q, u16 i, u16 j)
@@ -2190,7 +2201,9 @@ static s32 cake_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			if (ktime_after(now,
 					ktime_add_ms(q->last_reconfig_time,
 						     250))) {
-				q->config->rate_bps = (q->avg_peak_bandwidth * 15) >> 4;
+				WRITE_ONCE(q->config->rate_bps,
+					   (q->avg_peak_bandwidth * 15) >> 4);
+				q->last_reconfig_time = now;
 				cake_reconfigure(sch);
 			}
 		}
@@ -2301,9 +2314,9 @@ static struct sk_buff *cake_dequeue(struct Qdisc *sch)
 
 	if (q->config->is_shared && q->rate_ns &&
 	    now - q->last_checked_active >= q->config->sync_time) {
+		u64 new_rate = READ_ONCE(q->config->rate_bps);
 		struct net_device *dev = qdisc_dev(sch);
 		struct cake_sched_data *other_priv;
-		u64 new_rate = q->config->rate_bps;
 		u64 other_qlen, other_last_active;
 		struct Qdisc *other_sch;
 		u32 num_active_qs = 1;
@@ -2324,7 +2337,7 @@ static struct sk_buff *cake_dequeue(struct Qdisc *sch)
 		}
 
 		if (num_active_qs > 1)
-			new_rate = div64_u64(q->config->rate_bps, num_active_qs);
+			new_rate = div64_u64(new_rate, num_active_qs);
 
 		cake_configure_rates(sch, new_rate, true);
 		q->last_checked_active = now;
@@ -2896,9 +2909,18 @@ static void cake_configure_rates(struct Qdisc *sch, u64 rate, bool rate_adjust)
 		break;
 	}
 
-	for (c = qd->tin_cnt; c < CAKE_MAX_TINS; c++) {
-		cake_clear_tin(sch, c);
-		qd->tins[c].cparams.mtu_time = qd->tins[ft].cparams.mtu_time;
+	if (!rate_adjust) {
+		u32 backlog = sch->qstats.backlog, qlen = sch->q.qlen;
+
+		for (c = qd->tin_cnt; c < CAKE_MAX_TINS; c++) {
+			cake_clear_tin(sch, c);
+			qd->tins[c].cparams.mtu_time = qd->tins[ft].cparams.mtu_time;
+		}
+
+		backlog -= sch->qstats.backlog;
+		qlen -= sch->q.qlen;
+		if (qlen)
+			qdisc_tree_reduce_backlog(sch, qlen, backlog);
 	}
 
 	qd->rate_ns   = qd->tins[ft].tin_rate_ns;
@@ -2909,13 +2931,15 @@ static void cake_reconfigure(struct Qdisc *sch)
 {
 	struct cake_sched_data *qd = qdisc_priv(sch);
 	struct cake_sched_config *q = qd->config;
+	u64 rate_bps;
 
-	cake_configure_rates(sch, qd->config->rate_bps, false);
+	rate_bps = READ_ONCE(qd->config->rate_bps);
+	cake_configure_rates(sch, rate_bps, false);
 
 	if (q->buffer_config_limit) {
 		qd->buffer_limit = q->buffer_config_limit;
-	} else if (q->rate_bps) {
-		u64 t = q->rate_bps * q->interval;
+	} else if (rate_bps) {
+		u64 t = rate_bps * q->interval;
 
 		do_div(t, USEC_PER_SEC / 4);
 		qd->buffer_limit = max_t(u32, t, 4U << 20);
@@ -3067,9 +3091,16 @@ static int cake_change(struct Qdisc *sch, struct nlattr *opt,
 		return -EOPNOTSUPP;
 	}
 
+	/* Once the qdisc is live, commit and reconfigure under the lock that
+	 * serializes the datapath, so a concurrent 'tc qdisc change' and the
+	 * autorate update cannot lose the configured rate.
+	 */
+	if (qd->tins)
+		sch_tree_lock(sch);
+
 	ret = cake_config_change(q, opt, extack, &overhead_changed);
 	if (ret)
-		return ret;
+		goto unlock;
 
 	if (overhead_changed) {
 		qd->max_netlen = 0;
@@ -3078,13 +3109,13 @@ static int cake_change(struct Qdisc *sch, struct nlattr *opt,
 		qd->min_adjlen = ~0;
 	}
 
-	if (qd->tins) {
-		sch_tree_lock(sch);
+	if (qd->tins)
 		cake_reconfigure(sch);
+unlock:
+	if (qd->tins)
 		sch_tree_unlock(sch);
-	}
 
-	return 0;
+	return ret;
 }
 
 static void cake_destroy(struct Qdisc *sch)
